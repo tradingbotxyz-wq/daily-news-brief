@@ -1,0 +1,12 @@
+{
+  "name": "daily-news-brief",
+  "version": "0.1.0",
+  "description": "News portal + installable mobile app (PWA) with free/premium subscriptions and push notifications. Zero npm dependencies.",
+  "main": "server.js",
+  "private": true,
+  "engines": { "node": ">=22.13" },
+  "scripts": {
+    "start": "node --disable-warning=ExperimentalWarning server.js",
+    "test": "node --disable-warning=ExperimentalWarning --test test/*.test.js"
+  }
+}

@@ -1,0 +1,35 @@
+# One-click deploy on Render: https://render.com/deploy
+# Uses the Starter plan because a persistent disk is required to keep
+# subscribers, briefs and push keys across restarts (free instances wipe files).
+services:
+  - type: web
+    name: daily-news-brief
+    runtime: docker
+    plan: starter
+    region: singapore
+    healthCheckPath: /api/health
+    disk:
+      name: data
+      mountPath: /app/data
+      sizeGB: 1
+    envVars:
+      - key: SECURE_COOKIES
+        value: "true"
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: INGEST_API_KEY
+        generateValue: true
+      - key: ADMIN_EMAIL
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: VAPID_SUBJECT
+        sync: false
+      - key: PREMIUM_PRICE_PAISE
+        value: "9900"
+      - key: PREMIUM_DAYS
+        value: "30"
+      - key: RAZORPAY_KEY_ID
+        sync: false
+      - key: RAZORPAY_KEY_SECRET
+        sync: false
