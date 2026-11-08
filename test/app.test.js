@@ -7,16 +7,24 @@ const crypto = require('crypto');
 
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'brief-'));
 process.env.DATA_DIR = dir;
+const fakeTurso = process.env.TEST_BACKEND === 'turso' ? require('./fake-turso') : null;
 process.env.INGEST_API_KEY = 'test-ingest-key-123';
 process.env.ADMIN_EMAIL = 'admin@test.local';
 process.env.ADMIN_PASSWORD = 'admin-pass-123';
-const { server, bootstrap } = require('../server');
+const { server, init } = require('../server');
 const md = require('../lib/markdown');
 const webpush = require('../lib/webpush');
 
 let base;
-before(async () => { bootstrap(); await new Promise((r) => server.listen(0, r)); base = `http://127.0.0.1:${server.address().port}`; });
-after(() => { server.close(); fs.rmSync(dir, { recursive: true, force: true }); });
+before(async () => {
+  if (fakeTurso) { const url = await fakeTurso.start('test-token'); process.env.TURSO_DATABASE_URL = url; process.env.TURSO_AUTH_TOKEN = 'test-token'; }
+  await init(); await new Promise((r) => server.listen(0, r)); base = `http://127.0.0.1:${server.address().port}`; });
+after(() => { server.close(); if (fakeTurso) fakeTurso.stop(); fs.rmSync(dir, { recursive: true, force: true }); });
+
+test('uses the expected database backend', async () => {
+  const r = await fetch(base + '/api/health').then((x) => x.json());
+  assert.equal(r.db, fakeTurso ? 'Turso' : 'local file');
+});
 
 function client() {
   let cookie = '';
@@ -120,7 +128,8 @@ test('web push payload decrypts per RFC 8291 (simulated browser)', () => {
 });
 
 test('VAPID JWT verifies with the public key', () => {
-  const vapid = webpush.loadOrCreateVapid(dir);
+  const kp = webpush.generateKeys();
+  const vapid = webpush.fromEnv(kp.publicKey, kp.privateKey);
   const h = webpush.vapidHeader('https://fcm.googleapis.com/fcm/send/abc', vapid, 'mailto:x@y.z');
   const [, t, k] = h.match(/^vapid t=([^,]+), k=(.+)$/);
   const [hd, pl, sig] = t.split('.');
@@ -128,4 +137,14 @@ test('VAPID JWT verifies with the public key', () => {
   const pub = Buffer.from(k, 'base64url');
   const key = crypto.createPublicKey({ key: { kty: 'EC', crv: 'P-256', x: pub.subarray(1, 33).toString('base64url'), y: pub.subarray(33).toString('base64url') }, format: 'jwk' });
   assert.ok(crypto.verify('sha256', Buffer.from(`${hd}.${pl}`), { key, dsaEncoding: 'ieee-p1363' }, Buffer.from(sig, 'base64url')));
+});
+
+test('admin can delete a brief; settings persist secrets', async () => {
+  const a = client();
+  await a('/api/auth/login', { method: 'POST', body: { email: 'admin@test.local', password: 'admin-pass-123' } });
+  const { data } = await a('/api/admin/briefs', { method: 'POST', body: { markdown: '## One\n- a' } });
+  assert.equal((await a(`/api/admin/briefs/${data.id}`, { method: 'DELETE' })).status, 200);
+  assert.equal((await a(`/api/admin/briefs/${data.id}`)).status, 404);
+  const cfg = (await a('/api/config')).data;
+  assert.match(cfg.vapidPublicKey, /^[A-Za-z0-9_-]{87}$/);
 });

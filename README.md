@@ -22,7 +22,7 @@ You need Node.js 22.13 or later. There are no npm packages to install.
 ```bash
 cp .env.example .env      # set ADMIN_EMAIL, ADMIN_PASSWORD, INGEST_API_KEY
 npm start                 # http://localhost:3000  ·  admin: http://localhost:3000/admin.html
-npm test                  # 8 automated tests
+npm test                  # automated tests (local file + Turso backends)
 ```
 
 On first start, the app creates your admin account and two sample briefs: one published and one draft waiting for review.
@@ -31,7 +31,7 @@ On first start, the app creates your admin account and two sample briefs: one pu
 
 Phones only allow installing the app and receiving notifications over **HTTPS**. Choose one:
 
-- **Render / Railway / Fly.io:** create a Node web service from this folder with the start command `npm start`. Attach a **persistent disk** mounted at `/app/data` and set `DATA_DIR=/app/data`.
+- **Render (free) + Turso:** see "Deploy for free" below. On other hosts without Turso, attach a **persistent disk** at `/app/data` and set `DATA_DIR=/app/data`.
 - **A small VPS** (for example DigitalOcean or Hostinger, about ₹400–800 a month): run `npm start` under `pm2` or `systemd`, with Caddy or Nginx in front to provide automatic HTTPS.
 
 Then set these values in `.env`:
@@ -40,7 +40,7 @@ Then set these values in `.env`:
 - a strong `ADMIN_PASSWORD`
 - `INGEST_API_KEY` (generate one with `openssl rand -hex 32`)
 
-Back up the `data/` folder. It holds the database and the push-notification keys. If the push keys are lost, every phone has to subscribe again.
+If you use the local database file, back up the `data/` folder: it holds the database and the push-notification keys. If the push keys are lost, every phone has to subscribe again. With Turso, everything is in the cloud database.
 
 ## Connect Claude (automatic drafts)
 
@@ -81,7 +81,8 @@ This version charges once for a fixed period. Auto-renewing subscriptions would 
 
 ```
 server.js            API, auth, billing, ingest, admin, static files
-lib/db.js            SQLite schema (Node's built-in node:sqlite)
+lib/db.js            Database: Turso over HTTP, or a local SQLite file (node:sqlite)
+lib/icons.js         Draws the PNG app icons on startup
 lib/webpush.js       Web Push encryption (RFC 8291) + VAPID signing (RFC 8292)
 lib/markdown.js      Safe Markdown → HTML renderer
 public/              Reader app (index.html, app.js, sw.js, manifest) + admin panel
@@ -97,15 +98,27 @@ seed/                Sample briefs used on first run
 - Publish to the Play Store by packaging this PWA as a Trusted Web Activity with Bubblewrap. No code changes are needed.
 - Add an Odia-language version of each brief.
 
-## Deploy on Render (recommended)
+## Deploy for free: Render + Turso (recommended)
 
-This repo includes `render.yaml` and a `Dockerfile`.
+Render's free plan erases local files whenever the app restarts, so this app keeps its data in **Turso**, a free cloud database (500 MB on the free plan, far more than this app needs).
 
+**1. Create the free database (Turso, about 3 minutes)**
+1. Sign up at [turso.tech](https://turso.tech) with GitHub.
+2. Click **Create Database**, name it `daily-news-brief`, and choose the **Mumbai (aws-ap-south-1)** region if it is offered.
+3. Open the database and copy its **URL** (it starts with `libsql://`).
+4. Click **Create Token** (no expiry, read and write) and copy the token.
+
+**2. Deploy the app (Render, about 5 minutes)**
 1. Sign in at [render.com](https://render.com) with GitHub and allow access to this repository.
-2. Click **New → Blueprint** and pick this repository. Render reads `render.yaml`.
-3. When asked, enter `ADMIN_EMAIL`, `ADMIN_PASSWORD` and `VAPID_SUBJECT` (`mailto:you@example.com`). Leave Razorpay blank for demo mode.
-4. Click **Apply**. In a few minutes the app is live at `https://daily-news-brief-xxxx.onrender.com` with HTTPS.
+2. Click **New → Blueprint** and pick this repository. Render reads `render.yaml` and uses the **Free** plan.
+3. When asked, fill in:
+   - `TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN` from step 1
+   - `ADMIN_EMAIL` and `ADMIN_PASSWORD` for your admin login
+   - `VAPID_SUBJECT`: `mailto:you@example.com`
+   - Leave the Razorpay fields empty for demo mode.
+4. Click **Apply**. A few minutes later the app is live at `https://daily-news-brief-xxxx.onrender.com`.
 5. Open **Environment** in Render and copy the generated `INGEST_API_KEY`. Claude needs it to post drafts.
 
-It uses the Starter plan (about US$7 a month) with a 1 GB disk. A disk is needed because Render's free plan erases files on every restart, which would delete your subscribers.
-The `Dockerfile` also works on Railway, Fly.io or any VPS. Mount a volume at `/app/data`.
+**About the free plan:** after 15 minutes without visitors, Render puts the app to sleep, and the next visit takes 30–60 seconds to load. To keep it awake, add a free monitor at [uptimerobot.com](https://uptimerobot.com) that opens `https://your-app.onrender.com/api/health` every 5 minutes. Render's free 750 hours a month cover one app running all month.
+
+The `Dockerfile` also works on any other host. Without Turso settings, the app saves data to a local file in `DATA_DIR`, so mount a persistent volume at `/app/data`.

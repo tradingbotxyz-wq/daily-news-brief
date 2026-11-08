@@ -1,30 +1,28 @@
-# One-click deploy on Render: https://render.com/deploy
-# Uses the Starter plan because a persistent disk is required to keep
-# subscribers, briefs and push keys across restarts (free instances wipe files).
+# One-click deploy on Render's FREE plan.
+# Data (subscribers, briefs, push keys) is stored in a free Turso database,
+# because free Render instances lose local files whenever they restart.
 services:
   - type: web
     name: daily-news-brief
     runtime: docker
-    plan: starter
+    plan: free
     region: singapore
     healthCheckPath: /api/health
-    disk:
-      name: data
-      mountPath: /app/data
-      sizeGB: 1
     envVars:
-      - key: SECURE_COOKIES
-        value: "true"
-      - key: SESSION_SECRET
-        generateValue: true
-      - key: INGEST_API_KEY
-        generateValue: true
+      - key: TURSO_DATABASE_URL
+        sync: false
+      - key: TURSO_AUTH_TOKEN
+        sync: false
       - key: ADMIN_EMAIL
         sync: false
       - key: ADMIN_PASSWORD
         sync: false
       - key: VAPID_SUBJECT
         sync: false
+      - key: SECURE_COOKIES
+        value: "true"
+      - key: INGEST_API_KEY
+        generateValue: true
       - key: PREMIUM_PRICE_PAISE
         value: "9900"
       - key: PREMIUM_DAYS
